@@ -8,60 +8,90 @@ defmodule PumpkinchatWeb.DrawLive do
 
   alias Pumpkinchat.Drawing
   alias Pumpkinchat.Repo
+  alias Pumpkinchat.SessionServer
 
   @impl true
   def mount(params, _session, socket) do
-    {:ok, assign(socket,
-      admin: true,
-      brush_type: "carve",
-      drawing: get_drawing(params["uuid"]),
-      drawing_mode: "select",
-      drawing_type: "pumpkin",
-      editable: true
-    )}
+    with true <- connected?(socket),
+         drawing <- get_drawing(params["uuid"])
+    do
+      SessionServer.join(self())
+
+      {:ok, assign(socket,
+        active_layer: "carving",
+        admin: true,
+        drawing: drawing,
+        drawing_mode: "pen",
+        drawing_type: drawing[:type] || "user",
+        draw_resolution: 6,
+        editable: true,
+        fill_color: "#060504",
+        loading: false
+      )}
+    else
+      _ ->
+        {:ok, assign(socket, loading: true)}
+    end
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
-      <%= if @admin do %>
-        <form class="flex flex-row-reverse gap-2 pb-1" phx-change="admin_settings_updated">
-          <button class="px-1 rounded transition bg-zinc-900 hover:bg-zinc-800" type="button" phx-click="load_drawing">
-            delete
-          </button>
-          <button class="px-1 rounded transition bg-zinc-900 hover:bg-zinc-800" type="button" phx-click="save_drawing">
-            save
-          </button>
-          <select name="drawing_type" class="p-0 rounded transition bg-zinc-900 hover:bg-zinc-800">
-            <option disabled>type</option>
-            <option selected={@drawing_type == "pumpkin"}>pumpkin</option>
-            <option selected={@drawing_type == "carving"}>carving</option>
-          </select>
-          <select name="brush_type" class="p-0 rounded transition bg-zinc-900 hover:bg-zinc-800">
-            <option disabled>brush</option>
-            <option selected={@brush_type == "primary"}>primary</option>
-            <option selected={@brush_type == "secondary"}>secondary</option>
-          </select>
-        </form>
+    <div class="h-full">
+      <%= if @loading do %>
+        <div class="w-full h-full grid justify-items-center content-center items-center">
+          <div class="loader"></div>
+        </div>
+      <% else %>
+        <%= if @admin do %>
+          <form class="flex flex-row-reverse gap-2 pb-1" phx-change="admin_settings_updated">
+            <button class="px-1 rounded transition bg-zinc-900 hover:bg-zinc-800" type="button" phx-click="load_drawing">
+              delete
+            </button>
+            <button class="px-1 rounded transition bg-zinc-900 hover:bg-zinc-800" type="button" phx-click="save_drawing">
+              save
+            </button>
+            <select name="drawing_type" class="p-0 rounded transition bg-zinc-900 hover:bg-zinc-800">
+              <option disabled>type</option>
+              <option selected={@drawing_type == "template"}>template</option>
+              <option selected={@drawing_type == "user"}>user</option>
+            </select>
+            <select name="active_layer" class="p-0 rounded transition bg-zinc-900 hover:bg-zinc-800">
+              <option disabled>layer</option>
+              <option selected={@active_layer == "pumpkin"}>pumpkin</option>
+              <option selected={@active_layer == "pumpkindeco"}>pumpkindeco</option>
+              <option selected={@active_layer == "carving"}>carving</option>
+            </select>
+            <input name="fill_color" class="bg-zinc-900 rounded w-24" value={@fill_color} placeholder="fill_color" />
+            <input name="draw_resolution" class="bg-zinc-900 rounded w-24" value={@draw_resolution} placeholder="draw_resolution" />
+          </form>
+        <% end %>
+        <div class="overflow-hidden">
+          <.drawing_controls drawing_mode={@drawing_mode} />
+          <.paper_canvas
+            id="pumpkin"
+            active_layer={@active_layer}
+            draw_resolution={@draw_resolution}
+            drawing_mode={@drawing_mode}
+            drawing_type={@drawing_type}
+            drawing={@drawing}
+            editable={@editable}
+            fill_color={@fill_color}
+          />
+        </div>
       <% end %>
-      <div class="overflow-hidden">
-        <.drawing_controls drawing_mode={@drawing_mode} />
-        <.paper_canvas
-          id="pumpkin"
-          drawing_mode={@drawing_mode}
-          editable={@editable}
-          drawing={@drawing}
-          draw_resolution={8}
-        />
-      </div>
     </div>
     """
   end
 
   @impl true
   def handle_event("admin_settings_updated", %{} = params, socket) do
-    {:noreply, assign(socket, brush_type: params["brush_type"], drawing_type: params["drawing_type"])}
+    {:noreply, assign(socket,
+      active_layer: params["active_layer"],
+      draw_resolution: params["draw_resolution"],
+      drawing_type: params["drawing_type"],
+      fill_color: params["fill_color"]
+    )}
   end
 
   @impl true
@@ -88,9 +118,10 @@ defmodule PumpkinchatWeb.DrawLive do
 
   ###
 
-  defp save_drawing(encoded_drawing, %{drawing_type: drawing_type} = assigns) do
-    assigns
-    |> Map.get(:drawing, %Drawing{})
+  defp save_drawing(encoded_drawing, %{drawing: drawing, drawing_type: drawing_type} = assigns) do
+    drawing = drawing || %Drawing{}
+
+    drawing
     |> Drawing.changeset(%{content: encoded_drawing, type: drawing_type})
     |> Repo.insert_or_update()
   end

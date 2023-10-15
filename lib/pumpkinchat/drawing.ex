@@ -6,11 +6,13 @@ defmodule Pumpkinchat.Drawing do
   @foreign_key_type :binary_id
 
   schema "drawings" do
-    field :type, Ecto.Enum, values: ~w(pumpkin carving)a
+    field :type, Ecto.Enum, values: ~w(template user)a
     field :content, :string
 
     timestamps()
   end
+
+  use Accessible
 
   @fields ~w(type content)a
 

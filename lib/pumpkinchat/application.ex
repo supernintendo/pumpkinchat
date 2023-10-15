@@ -5,6 +5,8 @@ defmodule Pumpkinchat.Application do
 
   use Application
 
+  alias Pumpkinchat.SessionServer
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -17,9 +19,10 @@ defmodule Pumpkinchat.Application do
       # Start Finch
       {Finch, name: Pumpkinchat.Finch},
       # Start the Endpoint (http/https)
-      PumpkinchatWeb.Endpoint
+      PumpkinchatWeb.Endpoint,
       # Start a worker by calling: Pumpkinchat.Worker.start_link(arg)
       # {Pumpkinchat.Worker, arg}
+      {SessionServer, name: SessionServer}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

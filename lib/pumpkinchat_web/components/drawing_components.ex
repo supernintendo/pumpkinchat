@@ -42,11 +42,14 @@ defmodule PumpkinchatWeb.DrawingComponents do
     """
   end
 
-  attr :id, :string, required: true
-  attr :drawing, Pumpkinchat.Drawing
-  attr :editable, :boolean, default: false
-  attr :drawing_mode, :string, required: true
+  attr :active_layer, :string
   attr :draw_resolution, :integer, default: 1
+  attr :drawing, Pumpkinchat.Drawing
+  attr :drawing_mode, :string, required: true
+  attr :drawing_type, :string
+  attr :editable, :boolean, default: false
+  attr :fill_color, :string
+  attr :id, :string, required: true
 
   @doc """
   A canvas that allows users to draw on it. Uses the `PaperCanvas` hook
@@ -58,10 +61,13 @@ defmodule PumpkinchatWeb.DrawingComponents do
       id={@id}
       class="w-full h-full bg-zinc-900 rounded"
       phx-hook="PaperCanvas"
+      data-active-layer={@active_layer}
+      data-draw-resolution={@draw_resolution}
       data-drawing-content={if is_nil(@drawing), do: nil, else: @drawing.content}
       data-drawing-mode={@drawing_mode}
-      data-draw-resolution={@draw_resolution}
+      data-drawing-type={@drawing_type}
       data-editable={@editable}
+      data-fill-color={@fill_color}
       phx-update="ignore"
       resize
     >

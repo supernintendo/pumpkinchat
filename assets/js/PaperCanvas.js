@@ -1,8 +1,11 @@
 /**
- * @namespace
+ * @namespace Pumpkinchat
+ * @property {string}  activeLayer            - The current drawing layer, either 'pumpkin', 'pumpkindeco' or 'carving'.
  * @property {string}  drawingContent         - A serialized %Pumpkinchat.Drawing{} for loading drawing content.
  * @property {string}  drawingMode            - The current drawing mode, either 'select' or 'pen'.
+ * @property {string}  drawingType            - What kind of drawing is being created, either 'template' or 'user'.
  * @property {number}  drawResolution         - The minimum distance between points when drawing.
+ * @property {string}  fillColor              - The current fill color.
  * @property {number}  hitTolerance           - The distance from a point to consider a click event.
  * @property {number}  minimumPointsPerPath   - The minimum number of points required to create a path.
  * @property {object}  mouseCurrentPoint      - The current mouse point.
@@ -14,12 +17,17 @@
  * @property {object}  project                - The current paper.js project.
  * @property {string}  selectionType          - The type of selection, either 'fill', 'segment', 'stroke' or null.
  * @property {boolean} shiftDown              - Whether the shift key is currently pressed.
+ * @property {string}  strokeColor            - The current stroke color.
+ * @property {integer} strokeWidth            - The current stroke width.
  */
 const PaperCanvas = {
+  activeLayer: 'carving',
   drawingContent: null,
   drawingMode: 'select',
+  drawingType: 'user',
   drawResolution: 1,
-  hitTolerance: 5,
+  fillColor: '#F97316',
+  hitTolerance: 3,
   minimumPointsPerPath: 3,
   mouseCurrentPoint: null,
   mouseLastPoint: null,
@@ -30,26 +38,52 @@ const PaperCanvas = {
   project: null,
   selectionType: null,
   shiftDown: false,
+  strokeColor: '#B45309',
+  strokeWidth: 0,
   /**
    * Called when the component is mounted. 
    */
   mounted() {
-    this.drawResolution = this.el.dataset.drawResolution || this.drawResolution
-    this.drawingContent = this.el.dataset.drawingContent
-    this.drawingMode = this.el.dataset.drawingMode || this.drawingMode
     paper.setup(this.el)
 
-    if (this.drawingContent) {
-      paper.project.importJSON(this.drawingContent)
+    if (this.el.dataset.drawingContent) {
+      paper.project.importJSON(this.el.dataset.drawingContent)
     }
+    this.createLayer('pumpkin')
+    this.createLayer('pumpkindeco')
+    this.createLayer('carving')
+    this.refreshSettings()
     this.bindEvents()
   },
   /**
    * Called when the component is updated on the server. 
    */
   updated() {
-    this.drawResolution = this.el.dataset.drawResolution || this.drawResolution
+    this.refreshSettings()
+  },
+  /**
+   * Refreshes clientside settings with data attributes
+   * set by the server.
+   */
+  refreshSettings() {
+    this.activeLayer = this.el.dataset.activeLayer || this.activeLayer
+    this.drawResolution = parseInt(this.el.dataset.drawResolution || this.drawResolution, 10)
     this.drawingMode = this.el.dataset.drawingMode || this.drawingMode
+    this.drawingType = this.el.dataset.drawingType || this.drawingType
+    this.fillColor = this.el.dataset.fillColor || this.fillColor
+
+    paper.project.layers.forEach(layer => {
+      if (layer.name === this.activeLayer) {
+        this.activateLayer(layer)
+      }
+    })
+  },
+  /**
+   * Activates the given layer and sets properties like fill color,
+   * stroke color etc. based on the layer name.
+   */
+  activateLayer(layer) {
+    layer.activate()
   },
   /**
    * Binds event listeners to the canvas element, window and component.
@@ -63,16 +97,28 @@ const PaperCanvas = {
     window.addEventListener('keyup', e => this.handleKeyUp(e))
   },
   /**
+   * Creates a new paper.js Layer object.
+   */
+  createLayer(name) {
+    if (this.getLayerByName(name)) return
+
+    let layer = new paper.Layer({name: name})
+
+    paper.project.addLayer(layer)
+  },
+  /**
    * Creates a new paper.js Path object.
    */
   createPath(params) {
+    if (this.layerEditable()) return
+
     let segments = params.segments || []
     let path = {
       segments: segments.map(([x, y]) => this.createPoint(x, y)),
-      fillColor: params.fillColor || '#F97316',
+      fillColor: params.fillColor || this.fillColor,
       strokeCap: 'round',
-      strokeColor: params.strokeColor || '#B45309',
-      strokeWidth: 2,
+      strokeColor: params.strokeColor || this.strokeColor,
+      strokeWidth: params.strokeWidth || this.strokeWidth,
       fullySelected: params.fullySelected || false
     }
     return new paper.Path({ ...params, ...path })
@@ -94,6 +140,20 @@ const PaperCanvas = {
     paper.project.getSelectedItems().forEach(item => item.selected = false)
   },
   /**
+   * Finishes the current drawing path and releases the mouse.
+   */
+  finishDrawing() {
+    this.mousePressed = false
+
+    if (this.path) {
+      if (this.path.segments.length > this.minimumPointsPerPath) {
+        this.path.add(this.path.firstSegment.point)
+      } else {
+        this.path.remove()
+      }
+    }
+  },
+  /**
    * Returns the delta between two points as a paper.js Point object.
    */
   getDelta(pointA, pointB) {
@@ -107,6 +167,12 @@ const PaperCanvas = {
    */
   getDistance(pointA, pointB) {
     return pointA.getDistance(pointB)
+  },
+  /**
+   * Returns a layer given its name.
+   */
+  getLayerByName(name) {
+    return paper.project.layers.find(layer => layer.name === name)
   },
   /**
    * Handles a keydown event.
@@ -291,6 +357,8 @@ const PaperCanvas = {
    * the mouse is pressed.
    */
   handleDrawing(e) {
+    if (!this.path) return
+
     let point = this.createPoint(e.clientX, e.clientY)
     let distance = this.getDistance(point, this.path.getNearestPoint(point))
     let distanceToBeginning = this.getDistance(point, this.path.segments[0].point)
@@ -312,28 +380,45 @@ const PaperCanvas = {
     this.mousePressed = false
 
     if (this.drawingMode === 'pen') {
-      this.finishDrawing();
+      this.finishDrawing()
     }
+    this.limitCarvingToPumpkin()
   },
   /**
    * Pushes a persist event to the server, passing the current
    * drawing encoded as JSON.
    */ 
   handlePersist() {
+    // Delete empty layers first
+    paper.project.layers.forEach(layer => {
+      if (layer.children.length === 0) {
+        layer.remove()
+      }
+    })
+    // Push persist event to the `PumpkinchatWeb.DrawLive` LiveView.
     this.pushEvent(this.persistEventName, {
       drawing: paper.project.exportJSON()
     });
   },
   /**
-   * Finishes the current drawing path and releases the mouse.
+   * Returns whether the active layer is editable.
    */
-  finishDrawing() {
-    this.mousePressed = false
+  layerEditable() {
+    return this.activeLayer === 'pumpkin' && paper.project.activeLayer.children.length >= 1
+  },
+  /**
+   * Limits the carving layer to the pumpkin layer by
+   * intersecting all carving paths with the pumpkin path.
+   */
+  limitCarvingToPumpkin() {
+    if (this.activeLayer === 'carving') {
+      let carvingPaths = this.getLayerByName('carving').children
+      let pumpkinPath = this.getLayerByName('pumpkin').children[0]
 
-    if (this.path.segments.length > this.minimumPointsPerPath) {
-      this.path.add(this.path.firstSegment.point)
-    } else {
-      this.path.remove()
+      carvingPaths.forEach(path => {
+        path.intersect(pumpkinPath)
+        path.remove()
+      })
     }
   }
 }
