@@ -13,7 +13,7 @@ defmodule PumpkinchatWeb.DrawingComponents do
   """
   def drawing_controls(%{} = assigns) do
     ~H"""
-    <div class="relative h-0 w-0 bg-zinc-800 flex flex-col">
+    <div class="relative bg-zinc-800 flex flex-row gap-1 p-1">
       <.drawing_control icon="hero-cursor-arrow-rays" current_mode_id={@drawing_mode} mode_id="select" />
       <.drawing_control icon="hero-pencil" current_mode_id={@drawing_mode} mode_id="pen" />
     </div>
@@ -29,7 +29,7 @@ defmodule PumpkinchatWeb.DrawingComponents do
   """
   def drawing_control(%{} = assigns) do
     ~H"""
-    <div class="mx-2 mt-2">
+    <div>
       <button
         type="button"
         class={if @current_mode_id == @mode_id, do: "p-1 w-12 rounded bg-orange-500 cursor-default transition", else: "p-1 w-12 rounded transition hover:bg-neutral-600/25"}
@@ -59,7 +59,7 @@ defmodule PumpkinchatWeb.DrawingComponents do
     ~H"""
     <canvas
       id={@id}
-      class="w-full h-full bg-zinc-900 rounded"
+      class="w-[512px] h-[512px] bg-zinc-900 rounded"
       phx-hook="PaperCanvas"
       data-active-layer={@active_layer}
       data-draw-resolution={@draw_resolution}

@@ -6,6 +6,8 @@ defmodule PumpkinchatWeb.DrawLive do
   """
   use PumpkinchatWeb, :live_view
 
+  require Ecto.Query
+
   alias Pumpkinchat.Drawing
   alias Pumpkinchat.Repo
   alias Pumpkinchat.SessionServer
@@ -37,14 +39,14 @@ defmodule PumpkinchatWeb.DrawLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="h-full">
+    <div class="grid items-center justify-items-center ">
       <%= if @loading do %>
         <div class="w-full h-full grid justify-items-center content-center items-center">
           <div class="loader"></div>
         </div>
       <% else %>
         <%= if @admin do %>
-          <form class="flex flex-row-reverse gap-2 pb-1" phx-change="admin_settings_updated">
+          <form class="flex flex-row-reverse gap-2 pb-1 w-[512px]" phx-change="admin_settings_updated">
             <button class="px-1 rounded transition bg-zinc-900 hover:bg-zinc-800" type="button" phx-click="load_drawing">
               delete
             </button>
@@ -66,7 +68,7 @@ defmodule PumpkinchatWeb.DrawLive do
             <input name="draw_resolution" class="bg-zinc-900 rounded w-24" value={@draw_resolution} placeholder="draw_resolution" />
           </form>
         <% end %>
-        <div class="overflow-hidden">
+        <div class="w-[512px]">
           <.drawing_controls drawing_mode={@drawing_mode} />
           <.paper_canvas
             id="pumpkin"
@@ -118,7 +120,7 @@ defmodule PumpkinchatWeb.DrawLive do
 
   ###
 
-  defp save_drawing(encoded_drawing, %{drawing: drawing, drawing_type: drawing_type} = assigns) do
+  defp save_drawing(encoded_drawing, %{drawing: drawing, drawing_type: drawing_type}) do
     drawing = drawing || %Drawing{}
 
     drawing
@@ -126,6 +128,21 @@ defmodule PumpkinchatWeb.DrawLive do
     |> Repo.insert_or_update()
   end
 
-  defp get_drawing(nil), do: nil
-  defp get_drawing(uuid), do: Repo.get(Drawing, uuid)
+  defp get_drawing(nil), do: get_random_template()
+  defp get_drawing(uuid) do
+    case Repo.get(Drawing, uuid) do
+      nil ->
+        get_random_template()
+
+      drawing ->
+        drawing
+    end
+  end
+
+  defp get_random_template do
+    Ecto.Query.from(d in Drawing, where: d.type == :template)
+    |> Repo.all()
+    |> Enum.shuffle()
+    |> List.first()
+  end
 end
